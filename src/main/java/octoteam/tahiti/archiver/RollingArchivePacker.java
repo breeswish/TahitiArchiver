@@ -6,6 +6,8 @@ import ch.qos.logback.core.rolling.helper.DateTokenConverter;
 import ch.qos.logback.core.rolling.helper.FileNamePattern;
 import ch.qos.logback.core.rolling.helper.RollingCalendar;
 
+import com.alutam.ziputils.ZipEncryptOutputStream;
+
 import java.io.*;
 import java.util.Date;
 import java.util.Enumeration;
@@ -17,6 +19,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+
 public class RollingArchivePacker {
 
     protected Context ctx = new ContextBase();
@@ -26,17 +29,16 @@ public class RollingArchivePacker {
     protected DatePatternFileMatcher[] srcMatchers;
 
     protected RollingCalendar rc;
+    private String password;
 
     protected ScheduledExecutorService executorService;
 
     protected boolean started = false;
 
-    //encryptor with password="pswd"
-    private Encryptor encryptor = new Encryptor("pswd");
-
-    public RollingArchivePacker(String[] srcFilePatterns, String destFilePattern) {
+    public RollingArchivePacker(String[] srcFilePatterns, String destFilePattern, String password) {
         this.srcPatterns = srcFilePatterns;
         this.destPattern = new FileNamePattern(destFilePattern, ctx);
+        this.password = password;
         this.srcMatchers = new DatePatternFileMatcher[srcPatterns.length];
         for (int i = 0; i < srcPatterns.length; ++i) {
             this.srcMatchers[i] = new DatePatternFileMatcher(this.srcPatterns[i], ctx);
@@ -82,7 +84,8 @@ public class RollingArchivePacker {
 
         try {
             FileOutputStream fout = new FileOutputStream(zipFileName);
-            ZipOutputStream zout = new ZipOutputStream(fout);
+            ZipEncryptOutputStream zeos = new ZipEncryptOutputStream(fout, password);
+            ZipOutputStream zout = new ZipOutputStream(zeos);
 
             for (DatePatternFileMatcher matcher : srcMatchers) {
                 File[] files = matcher.matchFilesInDateRange(lastPeriodStartInMilliSrc, periodStartInMilliSec);
@@ -91,7 +94,7 @@ public class RollingArchivePacker {
                         if (IOUtils.isZipFile(file)) {
                             // input stream is a zipped file: pipe every entry of it into out stream
                             try {
-                                //encryptor.decryptFile("Encrypt"+file.getName(),file.getName());
+
                                 ZipFile zip = new ZipFile(file);
                                 Enumeration<? extends ZipEntry> entries = zip.entries();
                                 while (entries.hasMoreElements()) {
@@ -124,7 +127,6 @@ public class RollingArchivePacker {
                     }
                 }
             }
-            encryptor.encryptFile(zipFileName,"Encrypt"+zipFileName);
             zout.close();
             fout.close();
         } catch (FileNotFoundException e) {
@@ -142,20 +144,14 @@ public class RollingArchivePacker {
         return srcPatterns;
     }
 
+    public String getPassword(){ return password;}
+
+    public void setPassword(String password){  this.password = password; }
+
     public boolean isStarted() {
         return started;
     }
 
-    public static  void main(String[] args){
 
-        String[] dailySourceFilePatterns = new String[]{ "resource/tahiti/message/client_message_%d{yyyy_MM_dd}.log"};
-
-        String dailyDestFilePattern="resource/tahiti_archive/daily/%d{yyyy_MM_dd}.zip";
-
-
-        RollingArchivePacker r=  new RollingArchivePacker(dailySourceFilePatterns, dailyDestFilePattern);
-
-        r.start();
-    }
 
 }
